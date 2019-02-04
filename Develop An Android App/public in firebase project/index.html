@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="manifest" href="/manifest.json">
+    <title>Welcome to The RPi Treasure Hunt</title>
+<script src="https://www.gstatic.com/firebasejs/5.8.1/firebase.js"></script>
+<script>
+  // Initialize Firebase
+  var config = {
+    apiKey: "Your apiKey goes here",
+    authDomain: "Your hosting domain goes here",
+    databaseURL: "Your database URL goes here",
+    projectId: "Your project id",
+    storageBucket: "Your storage domain",
+    messagingSenderId: "Your sender id"
+  };
+  firebase.initializeApp(config);
+</script>
+<script>
+  if('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js')
+      .then(function() {
+            console.log('Service Worker Registered');
+      });
+  }
+</script>
+    <style media="screen">
+      body { background: #fff; color: #000; font-family: Helvetica, Arial, sans-serif; margin: 0; padding: 0; text-align: center; background: url(images/logo.png) no-repeat 50% 300px fixed; background-size: 50% }
+      #title{ background: #000;color:#fff}
+      #signin{ margin:10px; padding:10px;}
+      #signout{ position: fixed; bottom: 0px;text-align: center}
+      .clueholder{ background:#ca0d4c; color:#fff; border:10px solid #fff; margin:0px; padding:10px;-webkit-border-radius: 15px; -moz-border-radius: 15px;border-radius: 15px;}
+      .theClue{display:none}
+      #loginform{background: #ca0d4c;color:#fff;padding:10px;text-align: right;width:300px;margin: auto;-webkit-border-radius: 3px; -moz-border-radius: 3px;border-radius: 3px;}
+      #load {
+        display: block; text-align: center; background: #000; text-decoration: none; color: white;  
+        position: fixed; bottom: 0;padding-top: 5px;padding-bottom: 5px;
+        width: 100%; height:18px;
+      }
+      input{ -webkit-border-radius: 3px; -moz-border-radius: 3px;border-radius: 3px;margin:3px;padding:2px}
+      button {
+        border:1px solid #000; -webkit-border-radius: 3px; -moz-border-radius: 3px;border-radius: 3px;font-size:12px;font-family:arial, helvetica, sans-serif; padding: 10px 10px 10px 10px; text-decoration:none; display:inline-block;font-weight:bold; color: #fff;
+        background-image: -webkit-gradient(linear, left top, left bottom, from(rgb(77, 77, 77)), to(rgb(29, 29, 27)));;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="title">
+      <h1>RPi Treasure Hunt</h1>
+    </div>
+    <div id="content">
+      Loading RPi Treasure Hunt App.
+    </div>
+    <p id="load">Connecting ...</p>
+    <script>
+      clues = null;
+      email = "";
+      document.addEventListener('DOMContentLoaded', function() {
+        try {
+          let app = firebase.app();
+          let features = ['auth', 'database', 'messaging', 'storage'].filter(feature => typeof app[feature] === 'function');
+          document.getElementById('load').innerHTML = `Connected to Treasure Hunt.`;
+          firebase.firestore().enablePersistence();
+        } catch (e) {
+          console.error(e);
+          document.getElementById('load').innerHTML = 'Error connecting to the Treasure Hunt.';
+        }
+      });
+      firebase.auth().onAuthStateChanged(function(user) {
+        window.user = user; // user is undefined if no user signed in
+        console.info("user changed - is now "+user);
+        if (user == null){
+          setLoginPage();
+        }else{
+          document.getElementById('load').style = "display:none"
+          getClueData();
+        }
+      });
+      function signinUser(){
+        email = document.getElementById("email").value
+        password = document.getElementById("pass").value
+        firebase.auth().signInWithEmailAndPassword(email, password)
+        .catch(function(err) {
+          console.error(err);
+        });
+      }
+
+      function getClueData(){
+        var db = firebase.firestore();
+        db.collection("Clues").get().then(function(querySnapshot) {
+          setCluesPage(querySnapshot);
+        });
+      }
+      
+      function signoutUser(){
+        firebase.auth().signOut()
+        .catch(function (err) {
+          console.error(err);
+        });
+      }
+
+      function openThisClue(o){
+        cluelist = document.getElementsByClassName('theClue')
+        for(c=0;c<cluelist.length;c++){
+            cluelist[c].style = "display:none";
+        }
+        theclue = document.getElementById(o);
+        theclue.style = "display:block";
+      }
+
+      function foundItem(i){
+        code = document.getElementById("clueCode_"+i).value;
+        clues.forEach(function(doc){
+          if(doc.id == i && code == doc.data().code){
+            console.log("we have a winner");
+            var newMsgKey = firebase.database().ref().child('msg').push().key;
+            var postData = {
+              email: email,
+              item: i
+            };
+            var updates = {};
+            updates['/msg/' + newMsgKey] = postData;
+            firebase.database().ref().update(updates);
+            document.getElementById("clue_"+i).style = "display:none"
+          }
+        });
+      }
+
+      function setLoginPage(){
+        document.getElementById('content').innerHTML = "<div id='loginform'>Email: <input id='email' type='text'><br>Password: <input id='pass' type='password'><br><button onclick='signinUser();'>Sign In</button></div>";
+      }
+
+      function getClueDisplay(cluelist){
+        out = "";
+        clues = cluelist;
+        clues.forEach(function(doc){
+          out += `<div class="clueholder" id="clue_`+doc.id+`"><button onclick="openThisClue('clueDetail_`+doc.id+`')">`+doc.data().name+`</button><div id="clueDetail_`+doc.id+`" class="theClue"><p>`+doc.data().clue+`</p><p>Treasure Code: <input id="clueCode_`+doc.id+`" type="text"><button onclick="foundItem('`+doc.id+`')">Found It!</button></p></div></div>`;
+        });
+        return out;
+      }
+
+      function setCluesPage(clues){
+        out = getClueDisplay(clues);
+        out += "<div id='signout'><button onclick='signoutUser()'>Sign Out</button></div>";
+        document.getElementById('content').innerHTML = out;
+      }
+    </script>
+    
+  </body>
+</html>
